@@ -16,6 +16,7 @@ database, to be picked up next time as the latest commit used.
 """
 import os, sys
 import argparse
+import atexit
 import codecs
 import fnmatch
 import locale
@@ -44,7 +45,6 @@ drivers = {
 REPO_DIRPATH = "."
 CODE_PATTERN = "*.sql"
 RELEASES_RELPATH = "releases"
-#~ OVERRIDE_NEWER = False
 RELEASE_TYPE = "gplan-cas"
 
 NEWLINE = "\n"
@@ -238,6 +238,8 @@ def create_temporary_repo(repo_dirpath):
     else:
         raise RuntimeError("Unable to find a main branch")
     temp_repo.create_head(branch, main).checkout()
+    atexit.register(remove_temporary_repo, temp_repo.working_dir)
+
     return temp_repo
 
 def remove_temporary_repo(repo_dirpath):
@@ -259,7 +261,8 @@ def remove_temporary_repo(repo_dirpath):
                 logger.warning("Couldn't remove temporary repo at %r; retrying after a delay", repo_dirpath)
                 time.sleep(1)
             else:
-                raise
+                logger.exception("Unable to remove temporary repo at %r after %d tries", repo_dirpath, n_try)
+                return
 
 def checkout_to_specific_commit(repo, commit):
     """Check out the temporary repo to a specific commit to pick up the
@@ -312,7 +315,7 @@ def get_latest_commit_from_repo(repo):
     logger.info("Find the latest commit to repo %r", repo)
     return repo.head.commit
 
-def generate_bundle_name(release_tag, from_commit, to_commit):
+def get_bundle_name(release_tag, from_commit, to_commit):
     """Generate a bundle name from the release tag & first/last commits
     """
     logger.info("Generate a bundle name from tag %s and commits %s/%s", release_tag, from_commit.hexsha, to_commit.hexsha)
@@ -320,7 +323,8 @@ def generate_bundle_name(release_tag, from_commit, to_commit):
     to_sha = get_short_sha(to_commit.repo, to_commit.hexsha)
     return "%s-%s-%s" % (release_tag, from_sha, to_sha)
 
-def generate_prologue(release_type, bundle_name):
+def generate_prologue(release_type, bundle_name, database_name):
+    if database_name: yield f"USE {database_name}\nGO\n"
     yield f"DECLARE @v_release_bundle VARCHAR(60) = '{bundle_name}';"
     yield f"DECLARE @v_current_bundle VARCHAR(60) = release.fn_release_bundle('{release_type}');"
     yield "IF @v_release_bundle < @v_current_bundle THROW 51000, 'The incoming release bundle is older than the last one applied. Use @i_override_newer to override', 1;\n"
@@ -330,6 +334,9 @@ def generate_epilogue(release_type, bundle_name):
 
 def generate_separator():
     yield "GO\n"
+
+def generate_file_contents(filepath):
+    yield re.sub(r"(?:\n|^)USE\s+.*\nGO\s*\n", "", read_and_decode(filepath), flags=re.IGNORECASE)
 
 def get_rel_filepaths_between_commits(repo, from_commit, to_commit):
     """Find affected filepaths relative to a repo root between two commits
@@ -341,44 +348,36 @@ def get_rel_filepaths_between_commits(repo, from_commit, to_commit):
         rel_filepaths.add(diff.b_path)
     return rel_filepaths
 
-#~ def tag_release_bundle(db, bundle_name, release_type=RELEASE_TYPE, override_newer=OVERRIDE_NEWER):
-    #~ logger.debug("tag bundle %s type %s override %s", bundle_name, release_type, override_newer)
-    #~ with db.cursor() as q:
-        #~ q.execute(
-            #~ "EXEC release.pr_tag_release_bundle @i_release_bundle = ?, @i_release_type = ?, @i_override_newer = ?",
-            #~ [bundle_name, release_type, override_newer]
-        #~ )
-
-def create_release_bundle(bundle_filepath, release_type, bundle_name, repo, rel_filepaths, code_pattern):
+def create_release_bundle(bundle_filepath, database_name, release_type, bundle_name, repo, rel_filepaths, code_pattern):
     logger.info("Generate a release file at %s from repo %r using files matching '%s'", bundle_filepath, repo, code_pattern)
     with open(bundle_filepath, "w") as f:
         #
         # Write the bundle prologue
         #
-        f.writelines(l + "\n" for l in generate_prologue(release_type, bundle_name))
-        f.writelines(l + "\n" for l in generate_separator())
+        f.write("\n".join(generate_prologue(release_type, bundle_name, database_name)) + "\n")
+        f.write("\n".join(generate_separator()) + "\n")
 
         #
         # Add each relevant file
         #
         for relpath in rel_filepaths:
             filepath = os.path.abspath(os.path.join(repo.working_tree_dir, relpath))
-            if fnmatch.fnmatch(filepath, code_pattern):
+            if fnmatch.fnmatch(relpath, code_pattern):
                 if os.path.exists(filepath):
                     logger.info("USING %s", relpath)
                     f.write(f"--\n-- {relpath}\n--\n")
-                    f.write(read_and_decode(filepath))
+                    f.write("\n".join(generate_file_contents(filepath)) + "\n")
+                    f.write("\n".join(generate_separator()) + "\n")
                 else:
-                    logger.warning("SKIPPING %s: no longer in the filesystem", relpath)
+                    logger.warning("SKIPPING '%s': no longer in the filesystem", relpath)
             else:
-                logger.warning("SKIPPING %s: doesn't match code pattern '%s'", relpath, code_pattern)
-            f.writelines(l + "\n" for l in generate_separator())
+                logger.warning("SKIPPING '%s': doesn't match code pattern '%s'", relpath, code_pattern)
 
         #
         # Write the bundle epilogue
         #
-        f.writelines(l + "\n" for l in generate_epilogue(release_type, bundle_name))
-        f.writelines(l + "\n" for l in generate_separator())
+        f.write("n".join(generate_epilogue(release_type, bundle_name)) + "\n")
+        f.write("\n".join(generate_separator()) + "\n")
 
 def main(
     repo_dirpath,
@@ -390,7 +389,6 @@ def main(
     code_pattern=CODE_PATTERN,
     releases_relpath=RELEASES_RELPATH,
     release_type=RELEASE_TYPE
-    #~ override_newer=OVERRIDE_NEWER
 ):
     """Produce a release bundle from a repo destined for a target database and then
     tag the database with the bundle used
@@ -399,20 +397,29 @@ def main(
     that database, and will generate a release script incorporating every change
     between that commit and the current HEAD
     """
+    db = database_name = None
     if dburi:
+        _, _, database_name, _, _ = parse_dburi_ex(dburi)
         if pyodbc:
             db = database(dburi)
         else:
             logger.warning("No pyodbc module available to connect to %s" % dburi)
-            db = None
-    else:
-        db = None
 
+    #
+    # Create a temporary clone of the repository at `repo_dirpath` so we
+    # don't intefere with a working copy
+    #
     repo = create_temporary_repo(repo_dirpath)
 
     if not release_tag:
         release_tag = time.strftime("%Y%m%d-%H%M%S")
 
+    #
+    # Attempt to determine a commit from:
+    # i) The command line
+    # ii) The database (if given)
+    # iii) The earliest commit in the repo
+    #
     if from_commit:
         from_commit = repo.commit(from_commit)
     if not from_commit and db:
@@ -422,6 +429,11 @@ def main(
     if not from_commit:
         from_commit = get_earliest_commit_from_repo(repo)
 
+    #
+    # Attempt to determine a commit from:
+    # i) The command line
+    # ii) The latest commit in the repo
+    #
     if to_commit:
         to_commit = repo.commit(to_commit)
     if not to_commit:
@@ -429,23 +441,35 @@ def main(
     if from_commit == to_commit:
         raise RuntimeError("No changes between latest & current commits")
 
+    #
+    # Move the head of the repo to the to-commit determined above
+    # This is so that we have the version of each file at that commit
+    #
+    checkout_to_specific_commit(repo, to_commit)
+
+    #
+    # If a list of files is specified, use that; otherwise, determine
+    # the files changed between the two commits
+    #
     if files_filepath:
         with open(files_filepath) as f:
             rel_filepaths = [l.strip() for l in f]
     else:
         rel_filepaths = get_rel_filepaths_between_commits(repo, from_commit, to_commit)
 
-    checkout_to_specific_commit(repo, to_commit)
-
+    #
+    # Determine where the release bundle should go and what it should be called
+    #
     releases_dirpath = os.path.join(repo_dirpath, releases_relpath)
     if not os.path.isdir(releases_dirpath):
         raise RuntimeError("Release path %s does not exist or is not a directory" % releases_dirpath)
-    bundle_name = generate_bundle_name(release_tag, from_commit, to_commit)
+    bundle_name = get_bundle_name(release_tag, from_commit, to_commit)
     bundle_filepath = os.path.abspath(os.path.join(releases_dirpath, "%s.sql" % bundle_name))
-    create_release_bundle(bundle_filepath, release_type, bundle_name, repo, rel_filepaths, code_pattern)
 
-    #~ tag_release_bundle(db, bundle_name, release_type, override_newer)
-    remove_temporary_repo(repo.working_dir)
+    #
+    # Create the release bundle
+    #
+    create_release_bundle(bundle_filepath, database_name, release_type, bundle_name, repo, rel_filepaths, code_pattern)
 
 def command_line():
     parser = argparse.ArgumentParser(description=sys.modules[__name__].__doc__)
@@ -458,7 +482,6 @@ def command_line():
     parser.add_argument("--files", help="A file containing a list of files paths relative to the repo root to be released in this bundle. Default: all files between the from & to commits which match the code pattern")
     parser.add_argument("--releases-relpath", default=RELEASES_RELPATH, help="A directory relative to the repo root where release bundles are to be created. Default: <repo>/releases")
     parser.add_argument("--release-type", default=RELEASE_TYPE, help="When holding the metadata for this release on the database, this release type is the key. Default: gplan-cas")
-    #~ parser.add_argument("--override-newer", default=OVERRIDE_NEWER)
     args = parser.parse_args()
     logger.debug(args)
 
@@ -472,7 +495,6 @@ def command_line():
         args.code_pattern,
         args.releases_relpath,
         args.release_type
-        #~ args.override_newer
     )
 
 if __name__ == '__main__':
