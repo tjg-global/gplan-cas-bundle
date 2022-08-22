@@ -30,15 +30,19 @@ database, to be picked up next time as the latest commit used.
 
 Simplest is to clone (and/or fork) the repo:
 
-    `git clone https://github.com/tjg-global/gplan-cas-bundle`
+    git clone https://github.com/tjg-global/gplan-cas-bundle
 
 and then `pip install` in dev mode:
 
-    `python -mpip install -e <path-to-clone>`
+    python -mpip install -e <path-to-clone>
 
 This will create a `gbundle` executable (.exe on Windows, shell script on *nix) which
 can be used to run the program
 
 ## Running
 
-`gbundle` uses `argparse` so `gbundle --help` will produce useful output
+`gbundle` uses [argparse](https://docs.python.org/3/library/argparse.html) so `gbundle --help` will produce useful output
+
+### Examples
+
+`gbundle --dburi=SVR-DB-CAS-DEV/TDI --repo=C:\work-in-progress\code`
