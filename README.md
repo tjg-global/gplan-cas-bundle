@@ -49,16 +49,16 @@ can be used to run the program
   release applied to that database for the `gplan-cas` project and find any further
   commits to the repository whose working directory is at `C:\work-in-progress\code`:
 
-    gbundle --dburi=SVR-DB-CAS-DEV/TDI --repo=C:\work-in-progress\code
+    `gbundle --dburi=SVR-DB-CAS-DEV/TDI --repo=C:\work-in-progress\code`
 
 * Produce a release bundle from a specified list of files contained in `files.txt`
   against the current commit of the repository in `C:\work-in-progress\code`:
 
-    gbundle --files=files.txt --repo=c:\work-in-progress\code
+    `gbundle --files=files.txt --repo=c:\work-in-progress\code`
 
 * Produce a release bundle to be applied to a database named `TDI` on server `SVR-DB-CAS-DEV`.
   The bundle should use the repository in `C:\work-in-progress\code` and consider all
   files changed between commit `2a7ff99ec` and the latest commit to `main`/`master`.
   Only consider files which match the pattern `*/tdi/sql/*.sql`
 
-    gbundle --dburi=SVR-DB-CAS-DEV/TDI --repo=C:\work-in-progress\code --from-commit=2a7ff99ec --code-pattern="*/tdi/sql/*.sql" %*
+    `gbundle --dburi=SVR-DB-CAS-DEV/TDI --repo=C:\work-in-progress\code --from-commit=2a7ff99ec --code-pattern="*/tdi/sql/*.sql"`
