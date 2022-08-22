@@ -360,7 +360,7 @@ def create_release_bundle(bundle_filepath, database_name, release_type, bundle_n
         #
         # Add each relevant file
         #
-        for relpath in rel_filepaths:
+        for relpath in sorted(rel_filepaths):
             filepath = os.path.abspath(os.path.join(repo.working_tree_dir, relpath))
             if fnmatch.fnmatch(relpath, code_pattern):
                 if os.path.exists(filepath):
