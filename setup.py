@@ -11,6 +11,7 @@ setuptools.setup(
     packages = ["gbundle"],
     install_requires=[
         'gitpython',
+        'pyodbc'
     ],
     entry_points = {
         "console_scripts" : [
