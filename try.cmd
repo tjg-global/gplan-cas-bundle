@@ -1,1 +1,0 @@
-python -m gbundle --dburi=SVR-DB-CAS-DEV/TDI --release-tag=test --files=files.txt --repo=C:\work-in-progress\gplan-cas
