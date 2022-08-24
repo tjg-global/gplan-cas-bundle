@@ -339,7 +339,7 @@ def generate_separator():
     yield "GO\n"
 
 def generate_file_contents(filepath):
-    yield re.sub(r"(?:\n|^)USE\s+.*\nGO\s*\n", "", read_and_decode(filepath), flags=re.IGNORECASE)
+    yield re.sub(r"(?:\n|^)USE\s+.*\nGO\s*\n", "\n", read_and_decode(filepath), flags=re.IGNORECASE)
 
 def get_rel_filepaths_between_commits(repo, from_commit, to_commit):
     """Find affected filepaths relative to a repo root between two commits
