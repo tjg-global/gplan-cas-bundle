@@ -58,8 +58,11 @@ def init_logging():
     """
     logger.setLevel(logging.DEBUG)
     stdout_handler = logging.StreamHandler()
-    stdout_handler.setLevel(logging.DEBUG)
+    stdout_handler.setLevel(logging.INFO)
     logger.addHandler(stdout_handler)
+    file_handler = logging.FileHandler(__name__ + ".log")
+    file_handler.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
 
 def sniff_newline_convention(text):
     """Determine which line-ending convention predominates in the text.
@@ -472,6 +475,7 @@ def main(
     create_release_bundle(bundle_filepath, database_name, release_type, bundle_name, repo, rel_filepaths, code_pattern)
 
 def command_line():
+    init_logging()
     parser = argparse.ArgumentParser(description=sys.modules[__name__].__doc__)
     parser.add_argument("--repo-dirpath", default=".", help="The root of a working copy of the repo. Default: the current directory" )
     parser.add_argument("--release-tag", help="A prefix for the release bundle name. Typically it will be a release version. Default: a generated timestamp")
@@ -498,5 +502,4 @@ def command_line():
     )
 
 if __name__ == '__main__':
-    init_logging()
     command_line()
