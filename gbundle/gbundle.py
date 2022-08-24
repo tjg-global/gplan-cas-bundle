@@ -238,7 +238,7 @@ def create_temporary_repo(repo_dirpath):
     else:
         raise RuntimeError("Unable to find a main branch")
     temp_repo.create_head(branch, main).checkout()
-    atexit.register(remove_temporary_repo, temp_repo.working_dir)
+    #~ atexit.register(remove_temporary_repo, temp_repo.working_dir)
 
     return temp_repo
 
