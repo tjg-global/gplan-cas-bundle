@@ -53,14 +53,14 @@ ENCODING_COOKIE_RE = re.compile(
      "^[ \t\v]*#.*?coding[:=][ \t]*([-_.a-zA-Z0-9]+)"
 )
 
-def init_logging():
+def init_logging(release_tag):
     """Ensure some basic logging
     """
     logger.setLevel(logging.DEBUG)
     stdout_handler = logging.StreamHandler()
     stdout_handler.setLevel(logging.INFO)
     logger.addHandler(stdout_handler)
-    file_handler = logging.FileHandler(__name__ + ".log")
+    file_handler = logging.FileHandler("gbundle-" + release_tag + ".log", mode="w")
     file_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
 
@@ -414,9 +414,6 @@ def main(
     #
     repo = create_temporary_repo(repo_dirpath)
 
-    if not release_tag:
-        release_tag = time.strftime("%Y%m%d-%H%M%S")
-
     #
     # Attempt to determine a commit from:
     # i) The command line
@@ -475,7 +472,6 @@ def main(
     create_release_bundle(bundle_filepath, database_name, release_type, bundle_name, repo, rel_filepaths, code_pattern)
 
 def command_line():
-    init_logging()
     parser = argparse.ArgumentParser(description=sys.modules[__name__].__doc__)
     parser.add_argument("--repo-dirpath", default=".", help="The root of a working copy of the repo. Default: the current directory" )
     parser.add_argument("--release-tag", help="A prefix for the release bundle name. Typically it will be a release version. Default: a generated timestamp")
@@ -489,9 +485,12 @@ def command_line():
     args = parser.parse_args()
     logger.debug(args)
 
+    release_tag = args.release_tag or time.strftime("%Y%m%d-%H%M%S")
+    init_logging(release_tag)
+
     main(
         args.repo_dirpath,
-        args.release_tag,
+        release_tag,
         args.dburi,
         args.from_commit,
         args.to_commit,
