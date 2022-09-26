@@ -329,11 +329,16 @@ def get_bundle_name(release_tag, from_commit, to_commit):
 def generate_prologue(release_type, bundle_name, database_name):
     if database_name: yield f"USE {database_name}\nGO\n"
     yield f"DECLARE @v_release_bundle VARCHAR(60) = '{bundle_name}';"
-    yield f"DECLARE @v_current_bundle VARCHAR(60) = release.fn_release_bundle('{release_type}');"
-    yield "IF @v_release_bundle < @v_current_bundle THROW 51000, 'The incoming release bundle is older than the last one applied. Use @i_override_newer to override', 1;\n"
+    yield f"DECLARE @v_released_at DATETIME = release.fn_released_at('{release_type}', '{bundle_name}');"
+    yield """IF @v_released_at IS NOT NULL BEGIN
+    DECLARE @v_message VARCHAR(MAX) = 'Release ' + @v_release_bundle + ' was already released at ' + CAST(@v_released_at AS VARCHAR);
+    THROW 51000, @v_message, 1;
+    RETURN;
+    END
+    """
 
 def generate_epilogue(release_type, bundle_name):
-    yield f"EXEC release.pr_tag_release_bundle @i_release_type = '{release_type}', @i_release_bundle = '{bundle_name}';"
+    yield f"EXEC release.pr_tag_release @i_type = '{release_type}', @i_tag = '{bundle_name}';"
 
 def generate_separator():
     yield "GO\n"
@@ -372,9 +377,9 @@ def create_release_bundle(bundle_filepath, database_name, release_type, bundle_n
                     f.write("\n".join(generate_file_contents(filepath)) + "\n")
                     f.write("\n".join(generate_separator()) + "\n")
                 else:
-                    logger.warning("SKIPPING '%s': no longer in the filesystem", relpath)
+                    logger.debug("SKIPPING '%s': no longer in the filesystem", relpath)
             else:
-                logger.warning("SKIPPING '%s': doesn't match code pattern '%s'", relpath, code_pattern)
+                logger.debug("SKIPPING '%s': doesn't match code pattern '%s'", relpath, code_pattern)
 
         #
         # Write the bundle epilogue
