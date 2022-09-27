@@ -280,7 +280,7 @@ def get_release_bundle_from_db(db, release_type=RELEASE_TYPE):
     """
     logger.info("Determine the last release of type %s applied to database %r", release_type, db)
     with db.cursor() as q:
-        return q.execute("SELECT release.fn_release_bundle(?)", [release_type]).fetchval()
+        return q.execute("SELECT release.fn_latest_release(?)", [release_type]).fetchval()
 
 def get_short_sha(repo, sha, length=8):
     """Use git's built-in logic to find a shortened form of a commit SHA
@@ -296,7 +296,8 @@ def get_latest_commit_sha_from_db(db):
     logger.debug("Found existing bundle name: %s", bundle_name)
     if bundle_name:
         try:
-            tag, from_commit, to_commit = bundle_name.split("-")
+            segments = bundle_name.split("-")
+            from_commit, to_commit = segments[-2:]
             return to_commit
         except (ValueError, TypeError):
             logger.warning("Unable to extract a commit from the release name %s", bundle_name)
